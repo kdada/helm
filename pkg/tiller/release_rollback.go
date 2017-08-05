@@ -80,7 +80,7 @@ func (s *ReleaseServer) prepareRollback(req *services.RollbackReleaseRequest) (*
 
 	// Store a new release object with previous release's configuration
 	target := &release.Release{
-		Name:      req.Name,
+		Name:      crls.Name,
 		Namespace: crls.Namespace,
 		Chart:     prls.Chart,
 		Config:    prls.Config,

@@ -79,7 +79,7 @@ func (s *ReleaseServer) prepareUpdate(req *services.UpdateReleaseRequest) (*rele
 
 	ts := timeconv.Now()
 	options := chartutil.ReleaseOptions{
-		Name:      req.Name,
+		Name:      currentRelease.Name,
 		Time:      ts,
 		Namespace: currentRelease.Namespace,
 		IsUpgrade: true,
@@ -102,7 +102,7 @@ func (s *ReleaseServer) prepareUpdate(req *services.UpdateReleaseRequest) (*rele
 
 	// Store an updated release.
 	updatedRelease := &release.Release{
-		Name:      req.Name,
+		Name:      currentRelease.Name,
 		Namespace: currentRelease.Namespace,
 		Chart:     req.Chart,
 		Config:    req.Values,

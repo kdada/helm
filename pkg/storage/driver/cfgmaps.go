@@ -235,6 +235,7 @@ func (cfgmaps *ConfigMaps) Delete(key string) (rls *rspb.Release, err error) {
 //    "VERSION"        - version of the release.
 //    "STATUS"         - status of the release (see proto/hapi/release.status.pb.go for variants)
 //    "OWNER"          - owner of the configmap, currently "TILLER".
+//    "NAMESPACE"      - namespace of the release.
 //    "NAME"           - name of the release.
 //
 func newConfigMapsObject(key string, rls *rspb.Release, lbs labels) (*api.ConfigMap, error) {
@@ -252,6 +253,7 @@ func newConfigMapsObject(key string, rls *rspb.Release, lbs labels) (*api.Config
 
 	// apply labels
 	lbs.set("NAME", rls.Name)
+	lbs.set("NAMESPACE", rls.Namespace)
 	lbs.set("OWNER", owner)
 	lbs.set("STATUS", rspb.Status_Code_name[int32(rls.Info.Status.Code)])
 	lbs.set("VERSION", strconv.Itoa(int(rls.Version)))

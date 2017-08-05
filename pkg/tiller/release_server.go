@@ -73,7 +73,7 @@ var ListDefaultLimit int64 = 512
 // We modified that. First, we added start and end delimiters. Second, we changed
 // the final ? to + to require that the pattern match at least once. This modification
 // prevents an empty string from matching.
-var ValidName = regexp.MustCompile("^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])+$")
+var ValidName = regexp.MustCompile("^(([A-Za-z0-9][-A-Za-z0-9_./]*)?[A-Za-z0-9])+$")
 
 // ReleaseServer implements the server-side gRPC endpoint for the HAPI services.
 type ReleaseServer struct {
@@ -155,6 +155,7 @@ func (s *ReleaseServer) reuseValues(req *services.UpdateReleaseRequest, current 
 }
 
 func (s *ReleaseServer) uniqName(start string, reuse bool) (string, error) {
+	namespace, name := splitName(start)
 
 	// If a name is supplied, we check to see if that name is taken. If not, it
 	// is granted. If reuse is true and a deleted release with that name exists,
@@ -167,7 +168,7 @@ func (s *ReleaseServer) uniqName(start string, reuse bool) (string, error) {
 
 		h, err := s.env.Releases.History(start)
 		if err != nil || len(h) < 1 {
-			return start, nil
+			return name, nil
 		}
 		relutil.Reverse(h, relutil.SortByRevision)
 		rel := h[0]
@@ -175,7 +176,7 @@ func (s *ReleaseServer) uniqName(start string, reuse bool) (string, error) {
 		if st := rel.Info.Status.Code; reuse && (st == release.Status_DELETED || st == release.Status_FAILED) {
 			// Allowe re-use of names if the previous release is marked deleted.
 			s.Log("name %s exists but is not in use, reusing name", start)
-			return start, nil
+			return name, nil
 		} else if reuse {
 			return "", errors.New("cannot re-use a name that is still in use")
 		}
@@ -190,7 +191,7 @@ func (s *ReleaseServer) uniqName(start string, reuse bool) (string, error) {
 		if len(name) > releaseNameMaxLen {
 			name = name[:releaseNameMaxLen]
 		}
-		if _, err := s.env.Releases.Get(name, 1); strings.Contains(err.Error(), "not found") {
+		if _, err := s.env.Releases.Get(namespace+"/"+name, 1); strings.Contains(err.Error(), "not found") {
 			return name, nil
 		}
 		s.Log("info: generated name %s is taken. Searching again.", name)
@@ -364,4 +365,20 @@ func validateManifest(c environment.KubeClient, ns string, manifest []byte) erro
 	r := bytes.NewReader(manifest)
 	_, err := c.BuildUnstructured(ns, r)
 	return err
+}
+
+func splitName(name string) (string, string) {
+	results := strings.Split(name, "/")
+	switch len(results) {
+	case 0:
+		return "", ""
+	case 2:
+		return results[0], results[1]
+	default:
+		return "", results[0]
+	}
+}
+
+func keyForRelease(rls *release.Release) string {
+	return fmt.Sprintf("%s/%s", rls.Namespace, rls.Name)
 }

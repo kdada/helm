@@ -124,7 +124,7 @@ func (s *ReleaseServer) UninstallRelease(c ctx.Context, req *services.UninstallR
 
 func (s *ReleaseServer) purgeReleases(rels ...*release.Release) error {
 	for _, rel := range rels {
-		if _, err := s.env.Releases.Delete(rel.Name, rel.Version); err != nil {
+		if _, err := s.env.Releases.Delete(keyForRelease(rel), rel.Version); err != nil {
 			return err
 		}
 	}

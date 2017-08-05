@@ -18,6 +18,7 @@ package storage // import "k8s.io/helm/pkg/storage"
 
 import (
 	"fmt"
+	"strings"
 
 	rspb "k8s.io/helm/pkg/proto/hapi/release"
 	relutil "k8s.io/helm/pkg/releaseutil"
@@ -34,32 +35,38 @@ type Storage struct {
 // if the storage driver failed to fetch the release, or the
 // release identified by the key, version pair does not exist.
 func (s *Storage) Get(name string, version int32) (*rspb.Release, error) {
-	s.Log("getting release %q", makeKey(name, version))
-	return s.Driver.Get(makeKey(name, version))
+	namespace, name := splitName(name)
+	key := makeKey(key(namespace, name), version)
+	s.Log("getting release %q", key)
+	return s.Driver.Get(key)
 }
 
 // Create creates a new storage entry holding the release. An
 // error is returned if the storage driver failed to store the
 // release, or a release with identical an key already exists.
 func (s *Storage) Create(rls *rspb.Release) error {
-	s.Log("creating release %q", makeKey(rls.Name, rls.Version))
-	return s.Driver.Create(makeKey(rls.Name, rls.Version), rls)
+	key := makeKey(keyForRelease(rls), rls.Version)
+	s.Log("creating release %q", key)
+	return s.Driver.Create(key, rls)
 }
 
 // Update update the release in storage. An error is returned if the
 // storage backend fails to update the release or if the release
 // does not exist.
 func (s *Storage) Update(rls *rspb.Release) error {
-	s.Log("updating release %q", makeKey(rls.Name, rls.Version))
-	return s.Driver.Update(makeKey(rls.Name, rls.Version), rls)
+	key := makeKey(keyForRelease(rls), rls.Version)
+	s.Log("updating release %q", key)
+	return s.Driver.Update(key, rls)
 }
 
 // Delete deletes the release from storage. An error is returned if
 // the storage backend fails to delete the release or if the release
 // does not exist.
 func (s *Storage) Delete(name string, version int32) (*rspb.Release, error) {
-	s.Log("deleting release %q", makeKey(name, version))
-	return s.Driver.Delete(makeKey(name, version))
+	namespace, name := splitName(name)
+	key := makeKey(key(namespace, name), version)
+	s.Log("deleting release %q", key)
+	return s.Driver.Delete(key)
 }
 
 // ListReleases returns all releases from storage. An error is returned if the
@@ -110,12 +117,15 @@ func (s *Storage) ListFilterAny(fns ...relutil.FilterFunc) ([]*rspb.Release, err
 // Deployed returns the deployed release with the provided release name, or
 // returns ErrReleaseNotFound if not found.
 func (s *Storage) Deployed(name string) (*rspb.Release, error) {
-	s.Log("getting deployed release from %q history", name)
+	namespace, name := splitName(name)
+	key := key(namespace, name)
+	s.Log("getting deployed release from %q history", key)
 
 	ls, err := s.Driver.Query(map[string]string{
-		"NAME":   name,
-		"OWNER":  "TILLER",
-		"STATUS": "DEPLOYED",
+		"NAME":      name,
+		"NAMESPACE": namespace,
+		"OWNER":     "TILLER",
+		"STATUS":    "DEPLOYED",
 	})
 	switch {
 	case err != nil:
@@ -130,14 +140,20 @@ func (s *Storage) Deployed(name string) (*rspb.Release, error) {
 // History returns the revision history for the release with the provided name, or
 // returns ErrReleaseNotFound if no such release name exists.
 func (s *Storage) History(name string) ([]*rspb.Release, error) {
-	s.Log("getting release history for %q", name)
+	namespace, name := splitName(name)
+	key := key(namespace, name)
+	s.Log("getting release history for %q", key)
 
-	return s.Driver.Query(map[string]string{"NAME": name, "OWNER": "TILLER"})
+	return s.Driver.Query(map[string]string{
+		"NAME":      name,
+		"NAMESPACE": namespace,
+		"OWNER":     "TILLER",
+	})
 }
 
 // Last fetches the last revision of the named release.
 func (s *Storage) Last(name string) (*rspb.Release, error) {
-	s.Log("getting last revision of %q", name)
+	s.Log("getting last revision of %q", convertName(name))
 	h, err := s.History(name)
 	if err != nil {
 		return nil, err
@@ -148,6 +164,36 @@ func (s *Storage) Last(name string) (*rspb.Release, error) {
 
 	relutil.Reverse(h, relutil.SortByRevision)
 	return h[0], nil
+}
+
+func convertName(name string) string {
+	return key(splitName(name))
+}
+
+func splitName(name string) (string, string) {
+	results := strings.Split(name, "/")
+	switch len(results) {
+	case 0:
+		return "", ""
+	case 2:
+		return results[0], results[1]
+	default:
+		return "", results[len(results)-1]
+	}
+}
+
+// key generates unique name for namespace and name.
+func key(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return fmt.Sprintf("%s.%s", name, namespace)
+}
+
+// keyForRelease generates unique name for release
+func keyForRelease(rls *rspb.Release) string {
+	_, rls.Name = splitName(rls.Name)
+	return key(rls.Namespace, rls.Name)
 }
 
 // makeKey concatenates a release name and version into
